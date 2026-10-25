@@ -41,11 +41,14 @@ HOW TO RUN
     pip install -r requirements.txt
     Put GRAPHHOPPER_API_KEY=your_key in a .env file (never commit it), or
     $env:GRAPHHOPPER_API_KEY="your_key"   (Windows PowerShell)
-    python graphhopper_enhanced.py
+    python graphhopper_enhanced.py        (terminal version)
+    python web_app.py                     (browser version, see README.md)
 
 HOW TO CONTINUE THE PROJECT
     Each feature lives in its own function (see the index below), so a new
     feature normally means one new function plus one call in run().
+    The web version (web_app.py) imports these same functions, so a fix here
+    fixes both versions.
 
 FUNCTION INDEX
     supports_color / paint ...... colour helpers
