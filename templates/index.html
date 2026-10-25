@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3Bytes Route Planner</title>
+<!-- Leaflet draws the map; OpenStreetMap provides the map tiles -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #f4f2ee; --panel: #ffffff; --ink: #1d2433; --muted: #667085;
+    --line: #e4e1da; --accent: #0f766e; --accent-ink: #ffffff; --accent-soft: #e6f3f1;
+    --warn: #b45309; --warn-soft: #fef3e2; --error: #b42318; --error-soft: #fdecea;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --panel: #1b2029; --ink: #e8eaf0; --muted: #98a2b3;
+      --line: #2c3340; --accent: #2dd4bf; --accent-ink: #062723; --accent-soft: #163a37;
+      --warn: #fbbf24; --warn-soft: #3a2e14; --error: #f97066; --error-soft: #3d1c1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--line); display: flex;
+           align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
+  header span { color: var(--muted); font-size: 13px; }
+  /* Sidebar gets more room; the map stays beside it at a fixed, smaller height
+     and the whole page scrolls, so every part of the sidebar can be reached. */
+  main { display: grid; grid-template-columns: minmax(360px, 5fr) minmax(0, 6fr); gap: 20px;
+         padding: 20px 24px; align-items: start; max-width: 1400px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+           padding: 18px; }
+  #map { border-radius: var(--radius); border: 1px solid var(--line);
+         position: sticky; top: 20px; height: min(560px, calc(100vh - 40px)); }
+  label.field { display: block; font-weight: 600; font-size: 13px; margin: 0 0 6px; }
+  .row { display: flex; gap: 8px; }
+  input[type=text] { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--line);
+       border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--panel); color: var(--ink); padding: 9px 14px; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+             font-weight: 600; width: 100%; padding: 12px; margin-top: 6px; }
+  .block { margin-bottom: 18px; }
+  .matches { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+  .matches button { width: 100%; text-align: left; display: flex; justify-content: space-between;
+                    gap: 10px; align-items: center; }
+  .matches button[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
+  .tag { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .tag.warn { color: var(--warn); font-weight: 600; }
+  .chosen { margin-top: 8px; font-size: 14px; color: var(--accent); font-weight: 600;
+            display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .chosen:empty { display: none; }
+  .chosen button { padding: 4px 10px; font-size: 13px; font-weight: 500; }
+  .area-note { font-size: 13px; color: var(--muted); margin: -4px 0 16px; }
+  .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .segmented button { border: 0; border-radius: 0; padding: 8px 14px; }
+  .segmented button + button { border-left: 1px solid var(--line); }
+  .segmented button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+  .options { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 14px; }
+  .notice { padding: 10px 12px; border-radius: 8px; font-size: 14px; margin: 8px 0; }
+  .notice.warn { background: var(--warn-soft); color: var(--warn); }
+  .notice.error { background: var(--error-soft); color: var(--error); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 18px 0 12px; }
+  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .stat small { display: block; color: var(--muted); font-size: 12px; }
+  .stat strong { font-size: 15px; }
+  .trip-title { font-size: 14px; color: var(--muted); margin: 0; }
+  ol.steps { padding: 0; margin: 0; list-style: none; counter-reset: step; }
+  ol.steps li { counter-increment: step; display: grid; grid-template-columns: 34px 1fr auto;
+                gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  ol.steps li::before { content: counter(step); color: var(--muted); text-align: right; }
+  ol.steps .dist { color: var(--muted); white-space: nowrap; }
+  .hidden { display: none !important; }
+  @media (max-width: 820px) {
+    main { grid-template-columns: 1fr; padding: 16px; }
+    #map { position: static; height: 340px; order: -1; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>3Bytes Route Planner</h1>
+  <span>Graphhopper Directions · Luzon · DEVASC Project Activity 3</span>
+</header>
+<main>
+  <section class="panel">
+    <p class="area-note">Trips are by car, bike or foot, so only places in mainland Luzon can be used.</p>
+    <!-- Step 1: find and confirm both places (improvement: location confirmation) -->
+    <div class="block" data-place="from">
+      <label class="field" for="from-input">Starting location</label>
+      <div class="row">
+        <input id="from-input" type="text" placeholder="e.g. Manila (Luzon only)" autocomplete="off">
+        <button type="button" data-find>Find</button>
+      </div>
+      <ul class="matches"></ul>
+      <div class="chosen"></div>
+    </div>
+    <div class="block" data-place="to">
+      <label class="field" for="to-input">Destination</label>
+      <div class="row">
+        <input id="to-input" type="text" placeholder="e.g. Baguio (Luzon only)" autocomplete="off">
+        <button type="button" data-find>Find</button>
+      </div>
+      <ul class="matches"></ul>
+      <div class="chosen"></div>
+    </div>
+
+    <!-- Step 2: options (only valid choices are possible, so no silent fallbacks) -->
+    <div class="options">
+      <div>
+        <label class="field">Vehicle</label>
+        <div class="segmented" id="vehicle">
+          <button type="button" data-value="car" aria-pressed="true">Car</button>
+          <button type="button" data-value="bike" aria-pressed="false">Bike</button>
+          <button type="button" data-value="foot" aria-pressed="false">Foot</button>
+        </div>
+      </div>
+      <div>
+        <label class="field">Units</label>
+        <div class="segmented" id="units">
+          <button type="button" data-value="km" aria-pressed="false">km</button>
+          <button type="button" data-value="mi" aria-pressed="false">mi</button>
+          <button type="button" data-value="both" aria-pressed="true">Both</button>
+        </div>
+      </div>
+    </div>
+    <button type="button" class="primary" id="go" disabled>Get directions</button>
+    <div id="message"></div>
+
+    <!-- Step 3: results -->
+    <div id="results" class="hidden">
+      <div class="stats">
+        <div class="stat"><small>Distance</small><strong id="r-distance"></strong></div>
+        <div class="stat"><small>Duration</small><strong id="r-duration"></strong></div>
+        <div class="stat"><small>Arrive by</small><strong id="r-eta"></strong></div>
+      </div>
+      <p class="trip-title" id="r-title"></p>
+      <ol class="steps" id="r-steps"></ol>
+      <button type="button" id="more" class="hidden" style="width:100%;margin-top:10px"></button>
+    </div>
+  </section>
+  <div id="map"></div>
+</main>
+
+<script>
+// ---------- state ----------
+const chosen = { from: null, to: null };          // confirmed locations
+let vehicle = "car", units = "both", allSteps = [];
+const PAGE = 20;                                   // directions shown before "Show more"
+
+// ---------- map (optional: the planner still works if Leaflet cannot load) ----------
+let map = null, layers = null;
+if (window.L) {
+  map = L.map("map").setView([12.88, 121.77], 6);   // Philippines
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
+  layers = L.layerGroup().addTo(map);
+} else {
+  document.getElementById("map").textContent = "Map unavailable (no internet connection to load the map library).";
+}
+
+// ---------- helpers ----------
+function showMessage(text, kind) {
+  const box = document.getElementById("message");
+  box.innerHTML = "";
+  if (!text) return;
+  const div = document.createElement("div");
+  div.className = "notice " + kind;
+  div.textContent = text;                          // textContent = no HTML injection
+  box.appendChild(div);
+}
+function updateGoButton() {
+  document.getElementById("go").disabled = !(chosen.from && chosen.to);
+}
+async function getJSON(url, options) {
+  const reply = await fetch(url, options);
+  const data = await reply.json().catch(() => ({ error: "Server did not return JSON" }));
+  if (!reply.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+// ---------- step 1: find + confirm a place ----------
+document.querySelectorAll("[data-place]").forEach(block => {
+  const which = block.dataset.place;
+  const input = block.querySelector("input");
+  const list = block.querySelector(".matches");
+  const chosenBox = block.querySelector(".chosen");
+
+  // After a match is picked, hide the other options and show the choice with a "Change" button
+  function showChoice(m) {
+    list.classList.add("hidden");
+    chosenBox.innerHTML = "";
+    const label = document.createElement("span"); label.textContent = "✓ " + m.name;
+    const change = document.createElement("button"); change.type = "button"; change.textContent = "Change";
+    change.addEventListener("click", () => {          // re-open the list to pick another match
+      list.classList.remove("hidden"); chosenBox.innerHTML = "";
+      chosen[which] = null; updateGoButton();
+    });
+    chosenBox.append(label, change);
+  }
+
+  async function find() {
+    const q = input.value.trim();
+    list.innerHTML = ""; list.classList.remove("hidden");
+    chosenBox.innerHTML = ""; chosen[which] = null; updateGoButton();
+    if (!q) { showMessage("Please type a place name.", "error"); return; }
+    showMessage("");
+    try {
+      const data = await getJSON("/api/geocode?q=" + encodeURIComponent(q));
+      if (!data.matches.length) { showMessage(data.message, "error"); return; }
+      if (!data.matches.some(m => m.exact)) {
+        showMessage(`None of the matches contain "${q}". Check the spelling before choosing.`, "warn");
+      }
+      data.matches.forEach(m => {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button"; btn.setAttribute("aria-pressed", "false");
+        const name = document.createElement("span"); name.textContent = m.name;
+        const tag = document.createElement("span");
+        tag.className = "tag" + (m.exact ? "" : " warn");
+        tag.textContent = m.exact ? m.type : "not an exact match";
+        btn.append(name, tag);
+        btn.addEventListener("click", () => {
+          list.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", "false"));
+          btn.setAttribute("aria-pressed", "true");
+          chosen[which] = m;
+          showChoice(m);
+          showMessage("");
+          updateGoButton();
+        });
+        li.appendChild(btn); list.appendChild(li);
+      });
+    } catch (err) { showMessage(err.message, "error"); }
+  }
+  block.querySelector("[data-find]").addEventListener("click", find);
+  input.addEventListener("keydown", e => { if (e.key === "Enter") find(); });
+  input.addEventListener("input", () => {           // typing again clears the old choice
+    chosen[which] = null; chosenBox.innerHTML = ""; list.innerHTML = ""; updateGoButton();
+  });
+});
+
+// ---------- step 2: segmented options ----------
+function segmented(id, onChange) {
+  document.querySelectorAll(`#${id} button`).forEach(btn => btn.addEventListener("click", () => {
+    document.querySelectorAll(`#${id} button`).forEach(b => b.setAttribute("aria-pressed", "false"));
+    btn.setAttribute("aria-pressed", "true");
+    onChange(btn.dataset.value);
+  }));
+}
+segmented("vehicle", v => vehicle = v);
+segmented("units", v => units = v);
+
+// ---------- step 3: route + results ----------
+function renderSteps(count) {
+  const list = document.getElementById("r-steps");
+  list.innerHTML = "";
+  allSteps.slice(0, count).forEach(step => {
+    const li = document.createElement("li");
+    const text = document.createElement("span"); text.textContent = step.text;   // wraps naturally
+    const dist = document.createElement("span"); dist.className = "dist"; dist.textContent = step.distance;
+    li.append(text, dist); list.appendChild(li);
+  });
+  const more = document.getElementById("more");
+  const left = allSteps.length - count;
+  more.classList.toggle("hidden", left <= 0);
+  more.textContent = `Show all ${allSteps.length} steps (${left} more)`;
+  more.onclick = () => renderSteps(allSteps.length);
+}
+
+document.getElementById("go").addEventListener("click", async () => {
+  const go = document.getElementById("go");
+  go.disabled = true; go.textContent = "Getting directions…"; showMessage("");
+  try {
+    const data = await getJSON("/api/route", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: chosen.from, to: chosen.to, vehicle, units })
+    });
+    document.getElementById("r-distance").textContent = data.distance;
+    document.getElementById("r-duration").textContent = data.duration;
+    document.getElementById("r-eta").textContent = data.eta;
+    document.getElementById("r-title").textContent = `${data.from} → ${data.to} by ${data.vehicle}`;
+    allSteps = data.steps; renderSteps(PAGE);
+    document.getElementById("results").classList.remove("hidden");
+
+    if (map) drawRoute(data.line);
+  } catch (err) {
+    showMessage(err.message, "error");
+  } finally {
+    go.textContent = "Get directions"; updateGoButton();
+  }
+});
+
+function drawRoute(lineFromServer) {
+    layers.clearLayers();
+    const a =[chosen.from.lat, chosen.from.lng], b = [chosen.to.lat, chosen.to.lng];
+    L.marker(a).bindPopup("Start: " + chosen.from.name).addTo(layers);
+    L.marker(b).bindPopup("Destination: " + chosen.to.name).addTo(layers);
+    const line = lineFromServer.length ? lineFromServer : [a, b];
+    const poly = L.polyline(line, { color: "#0f766e", weight: 5 }).addTo(layers);
+    map.fitBounds(poly.getBounds(), { padding: [30, 30] });
+}
+</script>
+</body>
+</html>
