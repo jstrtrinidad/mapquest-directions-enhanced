@@ -6,14 +6,14 @@ which replaced MapQuest, so the repository name still says "mapquest".
 
 The app takes a starting location, a destination and a vehicle (car, bike, foot) and shows
 the distance, duration, arrival time and turn-by-turn directions. Only places in
-mainland Luzon can be used (see `LUZON_POLYGON` in `graphhopper_enhanced.py`). It runs in two ways:
+mainland Luzon can be used (see `LUZON_POLYGON` in `app/graphhopper_enhanced.py`). It runs in two ways:
 
 | Version | File | How it looks |
 |---|---|---|
-| Terminal | `graphhopper_enhanced.py` | Coloured text in the VS Code / PowerShell terminal |
-| Web | `web_app.py` + `templates/index.html` | Browser page with a map, served on your own computer |
+| Terminal | `app/graphhopper_enhanced.py` | Coloured text in the VS Code / PowerShell terminal |
+| Web | `app/web_app.py` + `app/templates/index.html` | Browser page with a map, served on your own computer |
 
-Both versions use the same functions, so a fix in `graphhopper_enhanced.py` fixes both.
+Both versions use the same functions, so a fix in `app/graphhopper_enhanced.py` fixes both.
 
 ## Setup
 
@@ -24,7 +24,7 @@ Both versions use the same functions, so a fix in `graphhopper_enhanced.py` fixe
    ```
 3. Get a free API key at https://www.graphhopper.com/ (Dashboard → API Keys).
 4. Give the app your key, in **one** of these ways:
-   - Create a file named `.env` (no `.example`) next to the code containing
+   - Create a file named `.env` (no `.example`) in the top project folder (next to `README.md`) containing
      `GRAPHHOPPER_API_KEY=your_key_here`
    - or, in PowerShell: `$env:GRAPHHOPPER_API_KEY="your_key_here"`
 
@@ -35,14 +35,14 @@ Both versions use the same functions, so a fix in `graphhopper_enhanced.py` fixe
 
 Terminal version:
 ```
-python graphhopper_enhanced.py
+python app/graphhopper_enhanced.py
 ```
 Commands that work at the prompts: `q` quit (any prompt), `h` trip history,
 `u` change units (vehicle prompt), `r` re-type a place (match list), Ctrl+C exit.
 
 Web version:
 ```
-python web_app.py
+python app/web_app.py
 ```
 Then open http://127.0.0.1:5000 in a browser. Press Ctrl+C in the terminal to stop the server.
 The map needs an internet connection; the planner still works without it.
@@ -72,17 +72,17 @@ Sprint 2 improvements (from QA test cases):
 
 | File | Purpose |
 |---|---|
-| `graphhopper_enhanced.py` | Main app and all shared functions (see the function index in its docstring) |
-| `web_app.py` | Flask server: `/` page, `/api/geocode`, `/api/route` |
-| `templates/index.html` | Web page (HTML, CSS, JavaScript in one file) |
-| `graphhopper_parse-json_1.py` … `_7.py` | Original lab steps, kept for reference |
+| `app/graphhopper_enhanced.py` | Main app and all shared functions (see the function index in its docstring) |
+| `app/web_app.py` | Flask server: `/` page, `/api/geocode`, `/api/route` |
+| `app/templates/index.html` | Web page (HTML, CSS, JavaScript in one file) |
+| `lab/graphhopper_parse-json_1.py` … `_7.py` | Original lab steps, kept for reference |
 | `requirements.txt` | Python libraries to install |
 | `.env.example` | Template showing the variable name – copy to `.env` |
 
 ## How to continue the project
 
-- New terminal feature: add a function in `graphhopper_enhanced.py` and call it from `run()`.
-- New web feature: add a route in `web_app.py` that reuses those functions, then update `templates/index.html`.
+- New terminal feature: add a function in `app/graphhopper_enhanced.py` and call it from `run()`.
+- New web feature: add a route in `app/web_app.py` that reuses those functions, then update `app/templates/index.html`.
 - Work on your own branch, open a pull request, and have a teammate review it before merging into `main`.
 
 ## Backlog (future enhancements)
