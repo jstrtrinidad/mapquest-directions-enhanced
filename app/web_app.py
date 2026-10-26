@@ -8,7 +8,7 @@ is duplicated: geocoding, routing and formatting all come from that module.
 HOW TO RUN
     pip install -r requirements.txt
     Set GRAPHHOPPER_API_KEY (in .env or the terminal), then:
-    python web_app.py
+    python app/web_app.py
     Open http://127.0.0.1:5000 in your browser. Press Ctrl+C to stop.
 
 HOW IT WORKS

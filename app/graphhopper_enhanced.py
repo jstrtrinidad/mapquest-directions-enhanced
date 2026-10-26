@@ -41,8 +41,8 @@ HOW TO RUN
     pip install -r requirements.txt
     Put GRAPHHOPPER_API_KEY=your_key in a .env file (never commit it), or
     $env:GRAPHHOPPER_API_KEY="your_key"   (Windows PowerShell)
-    python graphhopper_enhanced.py        (terminal version)
-    python web_app.py                     (browser version, see README.md)
+    python app/graphhopper_enhanced.py    (terminal version)
+    python app/web_app.py                 (browser version, see README.md)
 
 HOW TO CONTINUE THE PROJECT
     Each feature lives in its own function (see the index below), so a new
