@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3Bytes Route Planner</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c2410c'/%3E%3Ccircle cx='10' cy='22' r='3' fill='none' stroke='white' stroke-width='2.5'/%3E%3Ccircle cx='22' cy='10' r='3' fill='none' stroke='white' stroke-width='2.5'/%3E%3Cpath d='M12.5 22h5.5a4.5 4.5 0 0 0 0-9h-4a4.5 4.5 0 0 1 0-9h5' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Leaflet draws the map; OpenStreetMap provides the map tiles -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #f4f2ee;              /* warm beige, as in the original design */
+    --surface: #ffffff;
+    --ink: #111827;
+    --muted: #4b5563;
+    --faint: #6b7280;
+    --line: #e5e7eb;
+    --field-line: #d1d5db;
+    --accent: #c2410c;          /* buttons: white text passes contrast */
+    --accent-hover: #9a3412;
+    --accent-ink: #ffffff;
+    --accent-bright: #ea580c;   /* logo and highlights */
+    --accent-soft: #fff4ed;
+    --accent-line: #fdba8c;
+    --warn: #92400e;
+    --warn-soft: #fffbeb;
+    --warn-line: #fcd34d;
+    --error: #b42318;
+    --error-soft: #fef3f2;
+    --error-line: #fecdca;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(17, 24, 39, .05), 0 4px 16px rgba(17, 24, 39, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115; --surface: #171a21; --ink: #f3f4f6; --muted: #aeb4bf; --faint: #8b93a1;
+      --line: #2a2f3a; --field-line: #3a4150;
+      --accent: #f97316; --accent-hover: #fb923c; --accent-ink: #111827;
+      --accent-bright: #f97316; --accent-soft: #2b1d14; --accent-line: #7c3f17;
+      --warn: #fcd34d; --warn-soft: #2a2412; --warn-line: #6b5520;
+      --error: #fca5a1; --error-soft: #2d1716; --error-line: #6b2f2b;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1115; --surface: #171a21; --ink: #f3f4f6; --muted: #aeb4bf; --faint: #8b93a1;
+    --line: #2a2f3a; --field-line: #3a4150;
+    --accent: #f97316; --accent-hover: #fb923c; --accent-ink: #111827;
+    --accent-bright: #f97316; --accent-soft: #2b1d14; --accent-line: #7c3f17;
+    --warn: #fcd34d; --warn-soft: #2a2412; --warn-line: #6b5520;
+    --error: #fca5a1; --error-soft: #2d1716; --error-line: #6b2f2b;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { width: 100%; max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- header / brand ---------- */
+  .site-header {
+    position: sticky; top: 0; z-index: 1000;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 10px; background: var(--accent-bright);
+    display: grid; place-items: center; flex: none;
+  }
+  .brand-mark svg { width: 20px; height: 20px; }
+  .brand-name { display: flex; align-items: baseline; gap: 8px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+  .brand-name span { font-weight: 500; color: var(--muted); font-size: 15px; letter-spacing: 0; }
+  .header-note {
+    font-size: 13px; color: var(--muted); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; white-space: nowrap;
+  }
+
+  /* ---------- page ---------- */
+  .page-intro { padding: 32px 0 20px; }
+  .page-intro h1 { margin: 0 0 6px; font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
+  .page-intro p { margin: 0; color: var(--muted); max-width: 640px; }
+  .layout {
+    display: grid; grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+    gap: 24px; align-items: start; padding-bottom: 32px;
+  }
+  .output { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px;
+  }
+  .form-card { min-height: 560px; }
+  .step + .step { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 22px; }
+  .step-title {
+    display: flex; align-items: center; gap: 10px; margin: 0 0 14px;
+    font-size: 15px; font-weight: 650;
+  }
+  .num {
+    width: 26px; height: 26px; border-radius: 8px; flex: none;
+    background: var(--accent-soft); color: var(--accent);
+    display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  }
+
+  /* ---------- places ---------- */
+  .block { margin-bottom: 16px; }
+  label.field {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 600; font-size: 13px; margin: 0 0 6px; color: var(--ink);
+  }
+  label.field::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: var(--ink);
+  }
+  [data-place="to"] label.field::before { background: var(--accent-bright); }
+  .row { display: flex; gap: 8px; }
+  input[type=text] {
+    flex: 1; min-width: 0; height: 44px; padding: 0 14px;
+    border: 1px solid var(--field-line); border-radius: 10px;
+    background: var(--surface); color: var(--ink); font: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input[type=text]::placeholder { color: var(--faint); }
+  input[type=text]:hover { border-color: var(--faint); }
+  input[type=text]:focus { outline: none; border-color: var(--accent-bright); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  button {
+    font: inherit; cursor: pointer; height: 44px; padding: 0 16px;
+    border: 1px solid var(--field-line); border-radius: 10px;
+    background: var(--surface); color: var(--ink); font-weight: 600; font-size: 14px;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  button:hover { background: var(--bg); }
+  button:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  ul.matches {
+    list-style: none; padding: 0; margin: 10px 0 0;
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  }
+  ul.matches:empty { display: none; }
+  ul.matches li + li { border-top: 1px solid var(--line); }
+  ul.matches button {
+    width: 100%; height: auto; padding: 11px 14px; border: 0; border-radius: 0; font-weight: 500;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    text-align: left; background: var(--surface);
+  }
+  ul.matches button[aria-pressed=true] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent-bright); }
+  .tag { font-size: 12px; color: var(--muted); white-space: nowrap; font-weight: 500; }
+  .tag.warn { color: var(--warn); font-weight: 600; }
+
+  .chosen {
+    margin-top: 10px; padding: 10px 12px;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    background: var(--accent-soft); border: 1px solid var(--accent-line);
+    border-radius: 10px; font-size: 14px; font-weight: 600;
+  }
+  .chosen:empty { display: none; }
+  .chosen button { height: 32px; padding: 0 10px; font-size: 13px; font-weight: 600; }
+
+  /* ---------- vehicle + units ---------- */
+  .vehicle-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .vehicle-option {
+    height: auto; padding: 14px 8px 12px; display: grid; justify-items: center; gap: 8px;
+    border: 1.5px solid var(--field-line); border-radius: 12px;
+    background: var(--surface); color: var(--muted); font-weight: 600; font-size: 14px;
+  }
+  .vehicle-option svg { width: 26px; height: 26px; }
+  .vehicle-option:hover { border-color: var(--faint); background: var(--surface); color: var(--ink); }
+  .vehicle-option[aria-pressed=true] {
+    border-color: var(--accent-bright); background: var(--accent-soft); color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .units-label { margin: 18px 0 8px; }
+  .segmented {
+    display: flex; border: 1px solid var(--field-line); border-radius: 10px;
+    overflow: hidden; background: var(--surface);
+  }
+  .segmented button {
+    flex: 1; height: 40px; padding: 0 8px; border: 0; border-radius: 0;
+    background: transparent; font-weight: 500; color: var(--muted);
+  }
+  .segmented button + button { border-left: 1px solid var(--field-line); }
+  .segmented button:hover { background: var(--bg); color: var(--ink); }
+  .segmented button[aria-pressed=true] { background: var(--ink); color: var(--surface); font-weight: 600; }
+
+  .primary {
+    width: 100%; height: 50px; margin-top: 22px;
+    background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+    font-weight: 650; font-size: 15px; border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.08);
+  }
+  .primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .primary:disabled { background: var(--bg); border-color: var(--line); color: var(--faint); opacity: 1; box-shadow: none; }
+
+  /* ---------- notices ---------- */
+  #message:empty { display: none; }
+  .notice { padding: 11px 14px; border-radius: 10px; border: 1px solid; font-size: 14px; margin-top: 12px; }
+  .notice.warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
+  .notice.error { background: var(--error-soft); color: var(--error); border-color: var(--error-line); }
+
+  /* ---------- map ---------- */
+  .map-wrap { position: relative; }
+  #map {
+    height: 560px; width: 100%;
+    border-radius: var(--radius); border: 1px solid var(--line);
+    box-shadow: var(--shadow); background: var(--surface);
+  }
+  .map-empty {
+    position: absolute; inset: 0; z-index: 500;
+    display: grid; place-items: center; pointer-events: none;
+  }
+  .map-empty-box {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 18px 22px; max-width: 320px; text-align: center;
+    display: grid; gap: 4px;
+  }
+  .map-empty-box strong { font-size: 15px; font-weight: 650; }
+  .map-empty-box span { font-size: 13px; color: var(--muted); }
+
+  /* ---------- results ---------- */
+  #results .step-title { margin-bottom: 4px; }
+  .trip-title { margin: 0 0 16px 36px; font-size: 14px; color: var(--muted); }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 20px; }
+  .stat { background: var(--bg); border-radius: 12px; padding: 14px; }
+  .stat small { display: block; color: var(--muted); font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+  .stat strong { font-size: 16px; font-weight: 650; line-height: 1.35; }
+  ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+  ol.steps li {
+    counter-increment: step; display: grid; grid-template-columns: 30px 1fr auto;
+    gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px;
+  }
+  ol.steps li::before {
+    content: counter(step); width: 26px; height: 26px; border-radius: 8px; background: var(--bg);
+    color: var(--muted); font-size: 12px; font-weight: 600; display: grid; place-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  ol.steps .dist { color: var(--muted); white-space: nowrap; font-size: 13px; }
+  #more { width: 100%; margin-top: 14px; }
+
+  footer { color: var(--faint); font-size: 12px; padding: 20px 0 32px; margin-top: auto; }
+  footer .container { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 880px) {
+    .layout { grid-template-columns: 1fr; gap: 16px; }
+    .output { order: 2; }
+    #map { height: 360px; }
+    .form-card { min-height: 0; }
+    .header-note { display: none; }
+  }
+  @media (max-width: 480px) {
+    .container { padding: 0 16px; }
+    .page-intro { padding-top: 24px; }
+    .page-intro h1 { font-size: 24px; }
+    .stats { grid-template-columns: 1fr; }
+    .card { padding: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/" aria-label="3Bytes Route Planner home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="6" cy="18" r="2.6"/><circle cx="18" cy="6" r="2.6"/>
+          <path d="M8.6 18H14a3.5 3.5 0 0 0 0-7h-4a3.5 3.5 0 0 1 0-7h5.4"/>
+        </svg>
+      </span>
+      <span class="brand-name">3Bytes <span>Route Planner</span></span>
+    </a>
+    <span class="header-note">Mainland Luzon · Car, bicycle or walking</span>
+  </div>
+</header>
+
+<main class="container">
+  <div class="page-intro">
+    <h1>Plan your trip</h1>
+    <p>Get the distance, travel time and turn-by-turn directions between two places in mainland Luzon.</p>
+  </div>
+
+  <div class="layout">
+    <section class="card form-card" aria-label="Trip planner">
+
+      <!-- Step 1: find and confirm both places -->
+      <div class="step">
+        <h2 class="step-title"><span class="num">1</span>Choose your places</h2>
+        <div class="block" data-place="from">
+          <label class="field" for="from-input">Starting location</label>
+          <div class="row">
+            <input id="from-input" type="text" placeholder="e.g. Manila" autocomplete="off">
+            <button type="button" data-find>Find</button>
+          </div>
+          <ul class="matches"></ul>
+          <div class="chosen"></div>
+        </div>
+        <div class="block" data-place="to">
+          <label class="field" for="to-input">Destination</label>
+          <div class="row">
+            <input id="to-input" type="text" placeholder="e.g. Baguio" autocomplete="off">
+            <button type="button" data-find>Find</button>
+          </div>
+          <ul class="matches"></ul>
+          <div class="chosen"></div>
+        </div>
+      </div>
+
+      <!-- Step 2: travel options -->
+      <div class="step">
+        <h2 class="step-title"><span class="num">2</span>How will you travel?</h2>
+        <div class="vehicle-grid" id="vehicle" role="group" aria-label="Vehicle">
+          <button type="button" class="vehicle-option" data-value="car" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 17H3v-5l2.2-5.2A2 2 0 0 1 7.1 6h9.8a2 2 0 0 1 1.9 1.3L21 12v5h-2"/>
+              <path d="M5 17h14"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/>
+              <path d="M3 12h18"/>
+            </svg>
+            <span>Car</span>
+          </button>
+          <button type="button" class="vehicle-option" data-value="bike" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="5.5" cy="16.5" r="3.5"/><circle cx="18.5" cy="16.5" r="3.5"/>
+              <path d="M5.5 16.5 9 9h6l3.5 7.5M9 9l3 7.5h-6.5M15 9l-1-3h-2.5"/>
+            </svg>
+            <span>Bicycle</span>
+          </button>
+          <button type="button" class="vehicle-option" data-value="foot" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="13" cy="4.5" r="1.8"/>
+              <path d="M10.5 21l1.8-6 2.2 1.8V21M9 11.5l2.2-2.2 2.6 1.4 2.2 3.3M9 11.5 7 16.5"/>
+            </svg>
+            <span>Walking</span>
+          </button>
+        </div>
+
+        <label class="field units-label" id="units-label">Distance units</label>
+        <div class="segmented" id="units" role="group" aria-labelledby="units-label">
+          <button type="button" data-value="km" aria-pressed="false">Kilometres</button>
+          <button type="button" data-value="mi" aria-pressed="false">Miles</button>
+          <button type="button" data-value="both" aria-pressed="true">Both</button>
+        </div>
+      </div>
+
+      <button type="button" class="primary" id="go" disabled>Get directions</button>
+      <div id="message"></div>
+    </section>
+
+    <div class="output">
+      <div class="map-wrap">
+        <div id="map" aria-label="Route map"></div>
+        <div class="map-empty" id="map-empty">
+          <div class="map-empty-box">
+            <strong>Your route will appear here</strong>
+            <span>Choose a starting point and a destination, then select Get directions.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Route summary and directions -->
+      <section id="results" class="card hidden" aria-label="Route summary">
+        <h2 class="step-title"><span class="num">3</span>Your route</h2>
+        <p class="trip-title" id="r-title"></p>
+        <div class="stats">
+          <div class="stat"><small>Distance</small><strong id="r-distance"></strong></div>
+          <div class="stat"><small>Duration</small><strong id="r-duration"></strong></div>
+          <div class="stat"><small>Arrive by</small><strong id="r-eta"></strong></div>
+        </div>
+        <ol class="steps" id="r-steps"></ol>
+        <button type="button" id="more" class="hidden"></button>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <span>3Bytes · DEVASC Project Activity 3</span>
+    <span>Routing by Graphhopper · Map data &copy; OpenStreetMap contributors</span>
+  </div>
+</footer>
+
+<script>
+// ---------- state ----------
+const chosen = { from: null, to: null };          // confirmed locations
+let vehicle = "car", units = "both", allSteps = [];
+const PAGE = 20;                                   // directions shown before "Show more"
+
+// ---------- map (optional: the planner still works if Leaflet cannot load) ----------
+let map = null, layers = null;
+if (window.L) {
+  map = L.map("map").setView([12.88, 121.77], 6);   // Philippines
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
+  layers = L.layerGroup().addTo(map);
+} else {
+  document.getElementById("map").textContent = "Map unavailable (no internet connection to load the map library).";
+}
+
+// ---------- helpers ----------
+function showMessage(text, kind) {
+  const box = document.getElementById("message");
+  box.innerHTML = "";
+  if (!text) return;
+  const div = document.createElement("div");
+  div.className = "notice " + kind;
+  div.textContent = text;                          // textContent = no HTML injection
+  box.appendChild(div);
+}
+function updateGoButton() {
+  document.getElementById("go").disabled = !(chosen.from && chosen.to);
+}
+async function getJSON(url, options) {
+  const reply = await fetch(url, options);
+  const data = await reply.json().catch(() => ({ error: "Server did not return JSON" }));
+  if (!reply.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+// ---------- step 1: find + confirm a place ----------
+document.querySelectorAll("[data-place]").forEach(block => {
+  const which = block.dataset.place;
+  const input = block.querySelector("input");
+  const list = block.querySelector(".matches");
+  const chosenBox = block.querySelector(".chosen");
+
+  // After a match is picked, hide the other options and show the choice with a "Change" button
+  function showChoice(m) {
+    list.classList.add("hidden");
+    chosenBox.innerHTML = "";
+    const label = document.createElement("span"); label.textContent = "✓ " + m.name;
+    const change = document.createElement("button"); change.type = "button"; change.textContent = "Change";
+    change.addEventListener("click", () => {          // re-open the list to pick another match
+      list.classList.remove("hidden"); chosenBox.innerHTML = "";
+      chosen[which] = null; updateGoButton();
+    });
+    chosenBox.append(label, change);
+  }
+
+  async function find() {
+    const q = input.value.trim();
+    list.innerHTML = ""; list.classList.remove("hidden");
+    chosenBox.innerHTML = ""; chosen[which] = null; updateGoButton();
+    if (!q) { showMessage("Please type a place name.", "error"); return; }
+    showMessage("");
+    try {
+      const data = await getJSON("/api/geocode?q=" + encodeURIComponent(q));
+      if (!data.matches.length) { showMessage(data.message, "error"); return; }
+      if (!data.matches.some(m => m.exact)) {
+        showMessage(`None of the matches contain "${q}". Check the spelling before choosing.`, "warn");
+      }
+      data.matches.forEach(m => {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button"; btn.setAttribute("aria-pressed", "false");
+        const name = document.createElement("span"); name.textContent = m.name;
+        const tag = document.createElement("span");
+        tag.className = "tag" + (m.exact ? "" : " warn");
+        tag.textContent = m.exact ? m.type : "not an exact match";
+        btn.append(name, tag);
+        btn.addEventListener("click", () => {
+          list.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", "false"));
+          btn.setAttribute("aria-pressed", "true");
+          chosen[which] = m;
+          showChoice(m);
+          showMessage("");
+          updateGoButton();
+        });
+        li.appendChild(btn); list.appendChild(li);
+      });
+    } catch (err) { showMessage(err.message, "error"); }
+  }
+  block.querySelector("[data-find]").addEventListener("click", find);
+  input.addEventListener("keydown", e => { if (e.key === "Enter") find(); });
+  input.addEventListener("input", () => {           // typing again clears the old choice
+    chosen[which] = null; chosenBox.innerHTML = ""; list.innerHTML = ""; updateGoButton();
+  });
+});
+
+// ---------- step 2: vehicle + units options ----------
+function segmented(id, onChange) {
+  document.querySelectorAll(`#${id} button`).forEach(btn => btn.addEventListener("click", () => {
+    document.querySelectorAll(`#${id} button`).forEach(b => b.setAttribute("aria-pressed", "false"));
+    btn.setAttribute("aria-pressed", "true");
+    onChange(btn.dataset.value);
+  }));
+}
+segmented("vehicle", v => vehicle = v);
+segmented("units", v => units = v);
+
+// ---------- step 3: route + results ----------
+function renderSteps(count) {
+  const list = document.getElementById("r-steps");
+  list.innerHTML = "";
+  allSteps.slice(0, count).forEach(step => {
+    const li = document.createElement("li");
+    const text = document.createElement("span"); text.textContent = step.text;   // wraps naturally
+    const dist = document.createElement("span"); dist.className = "dist"; dist.textContent = step.distance;
+    li.append(text, dist); list.appendChild(li);
+  });
+  const more = document.getElementById("more");
+  const left = allSteps.length - count;
+  more.classList.toggle("hidden", left <= 0);
+  more.textContent = `Show all ${allSteps.length} steps (${left} more)`;
+  more.onclick = () => renderSteps(allSteps.length);
+}
+
+document.getElementById("go").addEventListener("click", async () => {
+  const go = document.getElementById("go");
+  go.disabled = true; go.textContent = "Getting directions…"; showMessage("");
+  try {
+    const data = await getJSON("/api/route", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: chosen.from, to: chosen.to, vehicle, units })
+    });
+    document.getElementById("r-distance").textContent = data.distance;
+    document.getElementById("r-duration").textContent = data.duration;
+    document.getElementById("r-eta").textContent = data.eta;
+    document.getElementById("r-title").textContent = `${data.from} → ${data.to} by ${data.vehicle}`;
+    allSteps = data.steps; renderSteps(PAGE);
+    document.getElementById("results").classList.remove("hidden");
+
+    if (map) drawRoute(data.line);
+  } catch (err) {
+    showMessage(err.message, "error");
+  } finally {
+    go.textContent = "Get directions"; updateGoButton();
+  }
+});
+
+function drawRoute(lineFromServer) {
+    document.getElementById("map-empty").classList.add("hidden");
+    layers.clearLayers();
+    const a =[chosen.from.lat, chosen.from.lng], b = [chosen.to.lat, chosen.to.lng];
+    L.marker(a).bindPopup("Start: " + chosen.from.name).addTo(layers);
+    L.marker(b).bindPopup("Destination: " + chosen.to.name).addTo(layers);
+    const line = lineFromServer.length ? lineFromServer : [a, b];
+    const poly = L.polyline(line, { color: "#c2410c", weight: 5 }).addTo(layers);
+    map.fitBounds(poly.getBounds(), { padding: [30, 30] });
+}
+</script>
+</body>
+</html>
