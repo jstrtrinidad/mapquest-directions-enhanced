@@ -1,0 +1,32 @@
+# 3Bytes Route Planner - continuous integration
+# Runs the pytest suite on every push and every pull request.
+# Branch protection on main requires the "pytest" check below to pass before a merge.
+# The tests fake every Graphhopper call, so no API key (secret) is needed here.
+
+name: Tests
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install the libraries
+        run: pip install -r requirements.txt
+
+      - name: Run the tests
+        run: python -m pytest -v

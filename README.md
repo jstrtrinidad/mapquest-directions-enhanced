@@ -1,5 +1,7 @@
 # 3Bytes – Enhanced Graphhopper Directions
 
+[![Tests](https://github.com/jstrtrinidad/mapquest-directions-enhanced/actions/workflows/tests.yml/badge.svg)](https://github.com/jstrtrinidad/mapquest-directions-enhanced/actions/workflows/tests.yml)
+
 DEVASC Project Activity 3, Option 1: feature enhancements of the Lab 4.9.2 application
 ("Integrate a REST API in a Python Application"). The lab now uses the **Graphhopper** API,
 which replaced MapQuest, so the repository name still says "mapquest".
@@ -47,6 +49,17 @@ python app/web_app.py
 Then open http://127.0.0.1:5000 in a browser. Press Ctrl+C in the terminal to stop the server.
 The map needs an internet connection; the planner still works without it.
 
+## Tests and CI/CD
+
+The tests live in `tests/` and use **pytest**. Every Graphhopper call is faked, so the
+tests need no API key and no internet. Run them from the top project folder:
+```
+python -m pytest
+```
+`.github/workflows/tests.yml` runs the same tests on GitHub Actions on every push and every
+pull request. Branch protection on `main` requires the **pytest** check to pass, so a change
+that breaks a test cannot be merged.
+
 ## Features
 
 Enhancements over the lab code:
@@ -76,6 +89,9 @@ Sprint 2 improvements (from QA test cases):
 | `app/web_app.py` | Flask server: `/` page, `/api/geocode`, `/api/route` |
 | `app/templates/index.html` | Web page (HTML, CSS, JavaScript in one file) |
 | `lab/graphhopper_parse-json_1.py` … `_7.py` | Original lab steps, kept for reference |
+| `tests/` | pytest test cases (`conftest.py` holds the shared fakes) |
+| `.github/workflows/tests.yml` | GitHub Actions pipeline that runs the tests |
+| `pytest.ini` | Tells pytest where the tests are |
 | `requirements.txt` | Python libraries to install |
 | `.env.example` | Template showing the variable name – copy to `.env` |
 
