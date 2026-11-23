@@ -81,6 +81,7 @@ def route():
         "distance": gh.format_distance(path["distance"], units),
         "duration": gh.format_duration(path["time"]),
         "eta": gh.format_eta(path["time"]),
+        "warnings": gh.trip_warnings(path, vehicle),     # long trip / ferry, shown above the results
         "steps": [{"text": step["text"], "distance": gh.format_distance(step["distance"], units)}
                   for step in path["instructions"]],
         # Graphhopper gives [lng, lat]; Leaflet wants [lat, lng]
