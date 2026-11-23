@@ -84,6 +84,9 @@ Sprint 2 improvements (from QA test cases):
 Project Activity 4 (backlog features, each with its own test file):
 16. **Long trip warning** – trips over 8 hours or 500 km, and routes that use a ferry, show a
     warning; the terminal asks "Show the directions anyway?" (`trip_warnings`, `tests/test_long_trip.py`)
+17. **Plain message for sea gaps** – routing errors are explained in plain words, e.g. "No road
+    route between these places - they may be separated by sea" (`routing_error_message`,
+    `tests/test_sea_gap.py`)
 
 ## Project files
 
@@ -107,7 +110,6 @@ Project Activity 4 (backlog features, each with its own test file):
 
 ## Backlog (future enhancements)
 
-- Plain-language routing errors (e.g. "No road route – the places may be separated by sea")
 - Recover from a damaged `trip_history.json` instead of silently not saving
 - Multi-stop trips (waypoints) and route options such as avoiding tolls
 - Export directions to a file or share a link to the route

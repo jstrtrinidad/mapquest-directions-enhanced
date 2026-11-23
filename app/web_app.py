@@ -70,7 +70,7 @@ def route():
 
     status, data = gh.get_route(orig, dest, vehicle, API_KEY, with_points=True)
     if status != 200:
-        return error("Routing failed: {}".format(data.get("message", "Unknown error")), status)
+        return error(gh.routing_error_message(status, data), status)
 
     path = data["paths"][0]
     gh.save_trip(orig, dest, vehicle, path)      # shared history with the terminal app

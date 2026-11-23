@@ -41,6 +41,8 @@ ENHANCEMENTS OVER THE LAB 4.9.2 CODE
     15. Long trip warning: trips over LONG_TRIP_HOURS or LONG_TRIP_KM (and
         routes that use a ferry) show a warning, and the terminal asks before
         printing the directions.
+    16. Plain routing errors: Graphhopper's technical messages are turned into
+        plain advice, e.g. "No road route - the places may be separated by sea".
 
 HOW TO RUN
     pip install -r requirements.txt
@@ -63,6 +65,7 @@ FUNCTION INDEX
     find_locations .............. Geocoding API, returns Luzon matches only
     check_api_key ............... start-up key validation
     get_route ................... Routing API call, returns (status, json)
+    routing_error_message ....... routing errors in plain language (sea gaps etc.)
     format_duration ............. milliseconds -> "3 hrs 28 mins"
     format_distance ............. metres -> text in the chosen unit
     print_trip / print_directions summary + wrapped, paged directions table
@@ -276,6 +279,34 @@ def get_route(orig, dest, vehicle, key, with_points=False):
         params["points_encoded"] = "false"
     points = "&point={}%2C{}&point={}%2C{}".format(orig["lat"], orig["lng"], dest["lat"], dest["lng"])
     return api_get(ROUTE_URL + urllib.parse.urlencode(params) + points)
+
+
+SEA_GAP_MESSAGE = ("No road route between these places - they may be separated by sea "
+                   "(for example an island in a lake or off the coast). "
+                   "Choose two places connected by road on mainland Luzon.")
+
+
+def routing_error_message(status, data):
+    """
+    Turn a failed Routing API reply into plain language the user can act on.
+    status/data are what get_route returned; the original text is kept for unknown errors.
+    """
+    raw = data.get("message") or "Unknown error"
+    text = raw.lower()
+    if status == 0:
+        return "Could not reach Graphhopper ({}). Check your internet connection and try again.".format(raw)
+    if "connection between locations not found" in text:
+        return SEA_GAP_MESSAGE
+    if "cannot find point" in text or "point not found" in text:
+        return ("One of the places is too far from a road. "
+                "Pick a nearby town, street or landmark instead.")
+    if status in (401, 403):
+        return "The Graphhopper API key was rejected. Check GRAPHHOPPER_API_KEY in your .env file."
+    if status == 429:
+        return "The free Graphhopper limit was reached. Wait a minute and try again."
+    if status >= 500:
+        return "Graphhopper is having problems right now (error {}). Try again later.".format(status)
+    return "Routing error {}: {}".format(status, raw)
 
 
 # --------------------------------------------------------------------------- #
@@ -559,7 +590,7 @@ def run():
             print_trip(orig, dest, vehicle, units, path)
             save_trip(orig, dest, vehicle, path)
         else:
-            print(paint("Routing error {}: {}".format(status, data.get("message", "Unknown")), "red"))
+            print(paint(routing_error_message(status, data), "red"))
             print(paint("*" * 49, "red"))
 
 
