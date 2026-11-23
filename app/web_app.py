@@ -70,7 +70,7 @@ def route():
 
     status, data = gh.get_route(orig, dest, vehicle, API_KEY, with_points=True)
     if status != 200:
-        return error("Routing failed: {}".format(data.get("message", "Unknown error")), status)
+        return error(gh.routing_error_message(status, data), status)
 
     path = data["paths"][0]
     gh.save_trip(orig, dest, vehicle, path)      # shared history with the terminal app
@@ -81,6 +81,7 @@ def route():
         "distance": gh.format_distance(path["distance"], units),
         "duration": gh.format_duration(path["time"]),
         "eta": gh.format_eta(path["time"]),
+        "warnings": gh.trip_warnings(path, vehicle),     # long trip / ferry, shown above the results
         "steps": [{"text": step["text"], "distance": gh.format_distance(step["distance"], units)}
                   for step in path["instructions"]],
         # Graphhopper gives [lng, lat]; Leaflet wants [lat, lng]

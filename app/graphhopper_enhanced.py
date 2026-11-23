@@ -37,6 +37,16 @@ ENHANCEMENTS OVER THE LAB 4.9.2 CODE
         Luzon (Visayas, Mindanao, ferry islands, other countries) is rejected,
         because trips are made by car, bike or foot.
 
+    Project Activity 4 (backlog features, each covered by tests in tests/):
+    15. Long trip warning: trips over LONG_TRIP_HOURS or LONG_TRIP_KM (and
+        routes that use a ferry) show a warning, and the terminal asks before
+        printing the directions.
+    16. Plain routing errors: Graphhopper's technical messages are turned into
+        plain advice, e.g. "No road route - the places may be separated by sea".
+    17. History recovery: a damaged trip_history.json is moved aside to
+        trip_history.damaged.json and a fresh history is started (instead of
+        trips silently not being saved); broken entries are skipped.
+
 HOW TO RUN
     pip install -r requirements.txt
     Put GRAPHHOPPER_API_KEY=your_key in a .env file (never commit it), or
@@ -58,9 +68,12 @@ FUNCTION INDEX
     find_locations .............. Geocoding API, returns Luzon matches only
     check_api_key ............... start-up key validation
     get_route ................... Routing API call, returns (status, json)
+    routing_error_message ....... routing errors in plain language (sea gaps etc.)
     format_duration ............. milliseconds -> "3 hrs 28 mins"
     format_distance ............. metres -> text in the chosen unit
     print_trip / print_directions summary + wrapped, paged directions table
+    trip_warnings / confirm_long_trip  long-trip and ferry warnings
+    load_history ................ read the history, recovering a damaged file
     save_trip / show_history .... JSON trip history
     get_api_key / choose_units / choose_vehicle / choose_location ... prompts
     run / main .................. program loop and clean exit
@@ -108,6 +121,8 @@ LUZON_POLYGON = [
 ]
 PAGE_SIZE = 20                               # directions shown per page
 TEXT_WIDTH = 46                              # width of the instruction column
+LONG_TRIP_HOURS = 8                          # warn when a trip takes longer than this...
+LONG_TRIP_KM = 500                           # ...or is longer than this
 
 QUIT_WORDS = ("q", "quit", "exit")
 HISTORY_WORDS = ("h", "history")
@@ -270,6 +285,34 @@ def get_route(orig, dest, vehicle, key, with_points=False):
     return api_get(ROUTE_URL + urllib.parse.urlencode(params) + points)
 
 
+SEA_GAP_MESSAGE = ("No road route between these places - they may be separated by sea "
+                   "(for example an island in a lake or off the coast). "
+                   "Choose two places connected by road on mainland Luzon.")
+
+
+def routing_error_message(status, data):
+    """
+    Turn a failed Routing API reply into plain language the user can act on.
+    status/data are what get_route returned; the original text is kept for unknown errors.
+    """
+    raw = data.get("message") or "Unknown error"
+    text = raw.lower()
+    if status == 0:
+        return "Could not reach Graphhopper ({}). Check your internet connection and try again.".format(raw)
+    if "connection between locations not found" in text:
+        return SEA_GAP_MESSAGE
+    if "cannot find point" in text or "point not found" in text:
+        return ("One of the places is too far from a road. "
+                "Pick a nearby town, street or landmark instead.")
+    if status in (401, 403):
+        return "The Graphhopper API key was rejected. Check GRAPHHOPPER_API_KEY in your .env file."
+    if status == 429:
+        return "The free Graphhopper limit was reached. Wait a minute and try again."
+    if status >= 500:
+        return "Graphhopper is having problems right now (error {}). Try again later.".format(status)
+    return "Routing error {}: {}".format(status, raw)
+
+
 # --------------------------------------------------------------------------- #
 # Formatting
 # --------------------------------------------------------------------------- #
@@ -361,32 +404,125 @@ def print_trip(orig, dest, vehicle, units, path):
 
 
 # --------------------------------------------------------------------------- #
+# Long trip warning
+# --------------------------------------------------------------------------- #
+def trip_warnings(path, vehicle):
+    """
+    Return a list of plain-language warnings for one route (empty list = nothing to warn).
+    Warns when the trip takes over LONG_TRIP_HOURS or covers over LONG_TRIP_KM,
+    and when any step of the route uses a ferry.
+    """
+    warnings = []
+    hours = path["time"] / 3_600_000
+    km = path["distance"] / 1000
+    if hours > LONG_TRIP_HOURS or km > LONG_TRIP_KM:
+        warnings.append("This is a very long trip by {}: {} and {}. Plan rest stops, or "
+                        "choose a faster vehicle.".format(vehicle, metric_text(path["distance"]),
+                                                          format_duration(path["time"])))
+    if any("ferry" in step.get("text", "").lower() for step in path.get("instructions", [])):
+        warnings.append("This route uses a ferry. Check the ferry schedule before you go.")
+    return warnings
+
+
+def confirm_long_trip(warnings):
+    """Print the warnings and ask whether to show the directions. True = show them."""
+    if not warnings:
+        return True
+    for warning in warnings:
+        print(paint("Warning: " + warning, "yellow"))
+    while True:
+        answer = ask("Show the directions anyway? (y/n) [y]: ").lower()
+        if answer in ("", "y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        print(paint("Please type y or n.", "red"))
+
+
+# --------------------------------------------------------------------------- #
 # Trip history
 # --------------------------------------------------------------------------- #
+TRIP_TEXT_FIELDS = ("when", "from", "to", "vehicle")
+TRIP_NUMBER_FIELDS = ("distance_m", "duration_ms")
+
+
+def damaged_history_name():
+    """Where a damaged history file is moved: trip_history.json -> trip_history.damaged.json."""
+    base, ext = os.path.splitext(HISTORY_FILE)
+    return base + ".damaged" + (ext or ".json")
+
+
+def valid_trip(item):
+    """True when a history entry has every field with the right type."""
+    if not isinstance(item, dict):
+        return False
+    texts_ok = all(isinstance(item.get(field), str) for field in TRIP_TEXT_FIELDS)
+    numbers_ok = all(isinstance(item.get(field), (int, float)) and not isinstance(item.get(field), bool)
+                     for field in TRIP_NUMBER_FIELDS)
+    return texts_ok and numbers_ok
+
+
+def load_history():
+    """
+    Read HISTORY_FILE and recover from damage. Returns (trips, note):
+        trips  list of valid trip dicts (empty if there is no file yet);
+               None if the file is damaged but could not be moved (then do not save)
+        note   message for the user, "" when everything was fine
+    A file that is not valid JSON, or not a list, is moved to damaged_history_name()
+    (so nothing is lost) and a fresh history is started. Broken entries are skipped.
+    """
+    if not os.path.exists(HISTORY_FILE):
+        return [], ""
+    try:
+        with open(HISTORY_FILE, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except ValueError:                          # bad JSON or bad text encoding
+        data = None
+    except OSError as err:
+        return None, "Could not read the trip history ({}).".format(err.__class__.__name__)
+
+    if not isinstance(data, list):
+        backup = damaged_history_name()
+        try:
+            os.replace(HISTORY_FILE, backup)
+            return [], "The trip history was damaged. It was moved to {} and a new history " \
+                       "was started.".format(os.path.basename(backup))
+        except OSError:                         # None = do not overwrite the damaged file
+            return None, "The trip history is damaged and could not be moved. Delete {} to " \
+                         "start a new one.".format(os.path.basename(HISTORY_FILE))
+
+    trips = [item for item in data if valid_trip(item)]
+    skipped = len(data) - len(trips)
+    note = "Skipped {} damaged trip(s) in the history.".format(skipped) if skipped else ""
+    return trips, note
+
+
 def save_trip(orig, dest, vehicle, path):
-    """Append the trip to HISTORY_FILE (a JSON list). Failure to save is not fatal."""
+    """Append the trip to HISTORY_FILE (a JSON list), recovering a damaged file first.
+    Failure to save is not fatal."""
     entry = {"when": datetime.now().isoformat(timespec="seconds"),
              "from": orig["name"], "to": dest["name"], "vehicle": vehicle,
              "distance_m": round(path["distance"]), "duration_ms": path["time"]}
+    history, note = load_history()
+    if note:
+        print(paint(note, "yellow"))
+    if history is None:                         # keep the unreadable file as it is
+        print(paint("(Could not save trip history.)", "yellow"))
+        return
+    history.append(entry)
     try:
-        history = []
-        if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, encoding="utf-8") as handle:
-                history = json.load(handle)
-        history.append(entry)
         with open(HISTORY_FILE, "w", encoding="utf-8") as handle:
             json.dump(history, handle, indent=2, ensure_ascii=False)
-    except (OSError, ValueError):
+    except OSError:
         print(paint("(Could not save trip history.)", "yellow"))
 
 
 def show_history():
-    """Print saved trips, newest last."""
-    try:
-        with open(HISTORY_FILE, encoding="utf-8") as handle:
-            history = json.load(handle)
-    except (OSError, ValueError):
-        history = []
+    """Print saved trips, newest last (damaged entries are skipped with a note)."""
+    history, note = load_history()
+    history = history or []
+    if note:
+        print(paint(note, "yellow"))
     if not history:
         print("No trips saved yet.")
         return
@@ -508,10 +644,14 @@ def run():
 
         status, data = get_route(orig, dest, vehicle, key)
         if status == 200:
-            print_trip(orig, dest, vehicle, units, data["paths"][0])
-            save_trip(orig, dest, vehicle, data["paths"][0])
+            path = data["paths"][0]
+            if not confirm_long_trip(trip_warnings(path, vehicle)):
+                print("Trip skipped. Choose other places or another vehicle.")
+                continue
+            print_trip(orig, dest, vehicle, units, path)
+            save_trip(orig, dest, vehicle, path)
         else:
-            print(paint("Routing error {}: {}".format(status, data.get("message", "Unknown")), "red"))
+            print(paint(routing_error_message(status, data), "red"))
             print(paint("*" * 49, "red"))
 
 
