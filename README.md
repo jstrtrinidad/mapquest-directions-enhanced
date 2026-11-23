@@ -81,6 +81,10 @@ Sprint 2 improvements (from QA test cases):
 14. **Luzon only** – places outside mainland Luzon (Visayas, Mindanao, ferry islands, other countries) are rejected, since trips are by car, bike or foot
 15. **Web UI** – browser version with a route map (Flask + Leaflet/OpenStreetMap)
 
+Project Activity 4 (backlog features, each with its own test file):
+16. **Long trip warning** – trips over 8 hours or 500 km, and routes that use a ferry, show a
+    warning; the terminal asks "Show the directions anyway?" (`trip_warnings`, `tests/test_long_trip.py`)
+
 ## Project files
 
 | File | Purpose |
@@ -103,7 +107,6 @@ Sprint 2 improvements (from QA test cases):
 
 ## Backlog (future enhancements)
 
-- Warn before showing very long trips or routes that use ferries
 - Plain-language routing errors (e.g. "No road route – the places may be separated by sea")
 - Recover from a damaged `trip_history.json` instead of silently not saving
 - Multi-stop trips (waypoints) and route options such as avoiding tolls

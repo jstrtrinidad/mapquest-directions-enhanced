@@ -37,6 +37,11 @@ ENHANCEMENTS OVER THE LAB 4.9.2 CODE
         Luzon (Visayas, Mindanao, ferry islands, other countries) is rejected,
         because trips are made by car, bike or foot.
 
+    Project Activity 4 (backlog features, each covered by tests in tests/):
+    15. Long trip warning: trips over LONG_TRIP_HOURS or LONG_TRIP_KM (and
+        routes that use a ferry) show a warning, and the terminal asks before
+        printing the directions.
+
 HOW TO RUN
     pip install -r requirements.txt
     Put GRAPHHOPPER_API_KEY=your_key in a .env file (never commit it), or
@@ -61,6 +66,7 @@ FUNCTION INDEX
     format_duration ............. milliseconds -> "3 hrs 28 mins"
     format_distance ............. metres -> text in the chosen unit
     print_trip / print_directions summary + wrapped, paged directions table
+    trip_warnings / confirm_long_trip  long-trip and ferry warnings
     save_trip / show_history .... JSON trip history
     get_api_key / choose_units / choose_vehicle / choose_location ... prompts
     run / main .................. program loop and clean exit
@@ -108,6 +114,8 @@ LUZON_POLYGON = [
 ]
 PAGE_SIZE = 20                               # directions shown per page
 TEXT_WIDTH = 46                              # width of the instruction column
+LONG_TRIP_HOURS = 8                          # warn when a trip takes longer than this...
+LONG_TRIP_KM = 500                           # ...or is longer than this
 
 QUIT_WORDS = ("q", "quit", "exit")
 HISTORY_WORDS = ("h", "history")
@@ -361,6 +369,42 @@ def print_trip(orig, dest, vehicle, units, path):
 
 
 # --------------------------------------------------------------------------- #
+# Long trip warning
+# --------------------------------------------------------------------------- #
+def trip_warnings(path, vehicle):
+    """
+    Return a list of plain-language warnings for one route (empty list = nothing to warn).
+    Warns when the trip takes over LONG_TRIP_HOURS or covers over LONG_TRIP_KM,
+    and when any step of the route uses a ferry.
+    """
+    warnings = []
+    hours = path["time"] / 3_600_000
+    km = path["distance"] / 1000
+    if hours > LONG_TRIP_HOURS or km > LONG_TRIP_KM:
+        warnings.append("This is a very long trip by {}: {} and {}. Plan rest stops, or "
+                        "choose a faster vehicle.".format(vehicle, metric_text(path["distance"]),
+                                                          format_duration(path["time"])))
+    if any("ferry" in step.get("text", "").lower() for step in path.get("instructions", [])):
+        warnings.append("This route uses a ferry. Check the ferry schedule before you go.")
+    return warnings
+
+
+def confirm_long_trip(warnings):
+    """Print the warnings and ask whether to show the directions. True = show them."""
+    if not warnings:
+        return True
+    for warning in warnings:
+        print(paint("Warning: " + warning, "yellow"))
+    while True:
+        answer = ask("Show the directions anyway? (y/n) [y]: ").lower()
+        if answer in ("", "y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        print(paint("Please type y or n.", "red"))
+
+
+# --------------------------------------------------------------------------- #
 # Trip history
 # --------------------------------------------------------------------------- #
 def save_trip(orig, dest, vehicle, path):
@@ -508,8 +552,12 @@ def run():
 
         status, data = get_route(orig, dest, vehicle, key)
         if status == 200:
-            print_trip(orig, dest, vehicle, units, data["paths"][0])
-            save_trip(orig, dest, vehicle, data["paths"][0])
+            path = data["paths"][0]
+            if not confirm_long_trip(trip_warnings(path, vehicle)):
+                print("Trip skipped. Choose other places or another vehicle.")
+                continue
+            print_trip(orig, dest, vehicle, units, path)
+            save_trip(orig, dest, vehicle, path)
         else:
             print(paint("Routing error {}: {}".format(status, data.get("message", "Unknown")), "red"))
             print(paint("*" * 49, "red"))
