@@ -43,6 +43,9 @@ ENHANCEMENTS OVER THE LAB 4.9.2 CODE
         printing the directions.
     16. Plain routing errors: Graphhopper's technical messages are turned into
         plain advice, e.g. "No road route - the places may be separated by sea".
+    17. History recovery: a damaged trip_history.json is moved aside to
+        trip_history.damaged.json and a fresh history is started (instead of
+        trips silently not being saved); broken entries are skipped.
 
 HOW TO RUN
     pip install -r requirements.txt
@@ -70,6 +73,7 @@ FUNCTION INDEX
     format_distance ............. metres -> text in the chosen unit
     print_trip / print_directions summary + wrapped, paged directions table
     trip_warnings / confirm_long_trip  long-trip and ferry warnings
+    load_history ................ read the history, recovering a damaged file
     save_trip / show_history .... JSON trip history
     get_api_key / choose_units / choose_vehicle / choose_location ... prompts
     run / main .................. program loop and clean exit
@@ -438,30 +442,87 @@ def confirm_long_trip(warnings):
 # --------------------------------------------------------------------------- #
 # Trip history
 # --------------------------------------------------------------------------- #
+TRIP_TEXT_FIELDS = ("when", "from", "to", "vehicle")
+TRIP_NUMBER_FIELDS = ("distance_m", "duration_ms")
+
+
+def damaged_history_name():
+    """Where a damaged history file is moved: trip_history.json -> trip_history.damaged.json."""
+    base, ext = os.path.splitext(HISTORY_FILE)
+    return base + ".damaged" + (ext or ".json")
+
+
+def valid_trip(item):
+    """True when a history entry has every field with the right type."""
+    if not isinstance(item, dict):
+        return False
+    texts_ok = all(isinstance(item.get(field), str) for field in TRIP_TEXT_FIELDS)
+    numbers_ok = all(isinstance(item.get(field), (int, float)) and not isinstance(item.get(field), bool)
+                     for field in TRIP_NUMBER_FIELDS)
+    return texts_ok and numbers_ok
+
+
+def load_history():
+    """
+    Read HISTORY_FILE and recover from damage. Returns (trips, note):
+        trips  list of valid trip dicts (empty if there is no file yet);
+               None if the file is damaged but could not be moved (then do not save)
+        note   message for the user, "" when everything was fine
+    A file that is not valid JSON, or not a list, is moved to damaged_history_name()
+    (so nothing is lost) and a fresh history is started. Broken entries are skipped.
+    """
+    if not os.path.exists(HISTORY_FILE):
+        return [], ""
+    try:
+        with open(HISTORY_FILE, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except ValueError:                          # bad JSON or bad text encoding
+        data = None
+    except OSError as err:
+        return None, "Could not read the trip history ({}).".format(err.__class__.__name__)
+
+    if not isinstance(data, list):
+        backup = damaged_history_name()
+        try:
+            os.replace(HISTORY_FILE, backup)
+            return [], "The trip history was damaged. It was moved to {} and a new history " \
+                       "was started.".format(os.path.basename(backup))
+        except OSError:                         # None = do not overwrite the damaged file
+            return None, "The trip history is damaged and could not be moved. Delete {} to " \
+                         "start a new one.".format(os.path.basename(HISTORY_FILE))
+
+    trips = [item for item in data if valid_trip(item)]
+    skipped = len(data) - len(trips)
+    note = "Skipped {} damaged trip(s) in the history.".format(skipped) if skipped else ""
+    return trips, note
+
+
 def save_trip(orig, dest, vehicle, path):
-    """Append the trip to HISTORY_FILE (a JSON list). Failure to save is not fatal."""
+    """Append the trip to HISTORY_FILE (a JSON list), recovering a damaged file first.
+    Failure to save is not fatal."""
     entry = {"when": datetime.now().isoformat(timespec="seconds"),
              "from": orig["name"], "to": dest["name"], "vehicle": vehicle,
              "distance_m": round(path["distance"]), "duration_ms": path["time"]}
+    history, note = load_history()
+    if note:
+        print(paint(note, "yellow"))
+    if history is None:                         # keep the unreadable file as it is
+        print(paint("(Could not save trip history.)", "yellow"))
+        return
+    history.append(entry)
     try:
-        history = []
-        if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, encoding="utf-8") as handle:
-                history = json.load(handle)
-        history.append(entry)
         with open(HISTORY_FILE, "w", encoding="utf-8") as handle:
             json.dump(history, handle, indent=2, ensure_ascii=False)
-    except (OSError, ValueError):
+    except OSError:
         print(paint("(Could not save trip history.)", "yellow"))
 
 
 def show_history():
-    """Print saved trips, newest last."""
-    try:
-        with open(HISTORY_FILE, encoding="utf-8") as handle:
-            history = json.load(handle)
-    except (OSError, ValueError):
-        history = []
+    """Print saved trips, newest last (damaged entries are skipped with a note)."""
+    history, note = load_history()
+    history = history or []
+    if note:
+        print(paint(note, "yellow"))
     if not history:
         print("No trips saved yet.")
         return

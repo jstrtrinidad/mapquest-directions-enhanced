@@ -87,6 +87,9 @@ Project Activity 4 (backlog features, each with its own test file):
 17. **Plain message for sea gaps** – routing errors are explained in plain words, e.g. "No road
     route between these places - they may be separated by sea" (`routing_error_message`,
     `tests/test_sea_gap.py`)
+18. **History recovery** – a damaged `trip_history.json` is moved to `trip_history.damaged.json`
+    and a fresh history is started, so new trips are saved again; broken entries are skipped
+    (`load_history`, `tests/test_history_recovery.py`)
 
 ## Project files
 
@@ -110,7 +113,6 @@ Project Activity 4 (backlog features, each with its own test file):
 
 ## Backlog (future enhancements)
 
-- Recover from a damaged `trip_history.json` instead of silently not saving
 - Multi-stop trips (waypoints) and route options such as avoiding tolls
 - Export directions to a file or share a link to the route
 - Extend the service area (e.g. Mindoro or Visayas) with ferry-aware routing
