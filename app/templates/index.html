@@ -529,6 +529,7 @@ document.getElementById("go").addEventListener("click", async () => {
     document.getElementById("r-title").textContent = `${data.from} → ${data.to} by ${data.vehicle}`;
     allSteps = data.steps; renderSteps(PAGE);
     document.getElementById("results").classList.remove("hidden");
+    if (data.warnings && data.warnings.length) showMessage(data.warnings.join(" "), "warn");
 
     if (map) drawRoute(data.line);
   } catch (err) {
